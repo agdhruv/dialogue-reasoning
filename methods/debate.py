@@ -11,7 +11,7 @@ def debate(
 ) -> Conversation:
     """Generates an answer through a debate between two agents."""
     critic_prompt = (
-        "You are the Critic. Question assumptions and point out flaws, but do not solve the them."
+        "You are the Critic. Question assumptions and point out flaws, but do not solve it for them. "
         "If they have arrived at the correct answer, end the conversation immediately by saying TERMINATE <answer>."
     )
     solver_prompt = (

@@ -40,20 +40,29 @@ def process_question(index: int, row: pd.Series, results_dir: Path, solver_clien
             with open(output_file, "w") as f:
                 json.dump(serialized_data, f, indent=4)
 
+def test_function(idx: int, gsm_df: pd.DataFrame, solver_model: str, solver_client: OpenAI | AzureOpenAI, critic_model: str, critic_client: AzureOpenAI):
+    conversation = debate(gsm_df.loc[idx]['question'], solver_client=solver_client, solver_model=solver_model, critic_client=critic_client, critic_model=critic_model)
+    print(f"Question {idx}: {gsm_df.loc[idx]['question']}")
+    print(f"Gold answer: {gsm_df.loc[idx]['gold_answer']}")
+    conversation.print()
+
 if __name__ == "__main__":
     experiments = [
         {
             "solver_client_type": "ollama",
-            "solver_model": "llama3",
-        },
+            "solver_model": "llama3.1:8b",
+        }
     ]
 
     critic_client = get_azure_openai_client()
+    critic_model = "gpt-4o_2024-11-20"
     
     print("Loading GSM8K dataset...")
     dataset_split = "test"
-    top_k = 100
+    top_k = None
     gsm_df = load_gsm8k_dataset(dataset_split, top_k)
+    
+    # test_function(89, gsm_df, "llama3.1:8b", get_ollama_client(), "gpt-4o_2024-11-20", get_azure_openai_client())
 
     for exp in experiments:
         experiment_id = f"{dataset_split}_{exp['solver_client_type']}_{exp['solver_model']}"
@@ -71,11 +80,5 @@ if __name__ == "__main__":
         
         # 3. Process questions
         print(f"Processing {len(gsm_df)} questions...")
-        for index, row in tqdm(gsm_df.iterrows(), total=len(gsm_df), desc=f"Processing GSM8K ({exp['solver_model']})"):
-            process_question(index, row, results_dir, solver_client, exp['solver_model'], critic_client, exp['critic_model'])
-
-    # idx = 7
-    # conversation = debate(gsm_df.loc[idx]['question'], MODEL_NAME, client)
-    # print(f"Question {idx}: {gsm_df.loc[idx]['question']}")
-    # print(f"Gold answer: {gsm_df.loc[idx]['gold_answer']}")
-    # conversation.print()
+        for index, row in tqdm(gsm_df.iloc[:200].iterrows(), total=len(gsm_df), desc=f"Processing GSM8K ({exp['solver_model']})"):
+            process_question(index, row, results_dir, solver_client, exp['solver_model'], critic_client, critic_model)
