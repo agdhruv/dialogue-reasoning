@@ -1,3 +1,5 @@
 __pycache__
-results/
+*results*/
 .env
+wandb/
+lora_debate_ckpts/

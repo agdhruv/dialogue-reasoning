@@ -7,7 +7,7 @@ def debate(
     solver_model: str,
     critic_client: AzureOpenAI,
     critic_model: str,
-    max_rounds: int = 10
+    max_rounds: int = 5
 ) -> Conversation:
     """Generates an answer through a debate between two agents."""
     critic_prompt = (
@@ -15,7 +15,7 @@ def debate(
         "If they have arrived at the correct answer, end the conversation immediately by saying TERMINATE <answer>."
     )
     solver_prompt = (
-        "You are the Solver. Think step by step. Incorporate feedback if you are wrong."
+        "You are a helpful assistant. Think step by step. Incorporate feedback if you are wrong. Answer format: {\"answer\": <number>}."
     )
 
     critic = Agent(name="Critic", system_message=critic_prompt, model_name=critic_model, client=critic_client, temperature=0.3)

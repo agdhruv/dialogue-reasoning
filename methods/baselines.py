@@ -5,7 +5,7 @@ def zero_shot_answer(client: OpenAI | AzureOpenAI, question: str, model_name: st
     """
     Generates a direct, zero-shot answer using the provided client.
     """
-    system_prompt = "Solve the following problem."
+    system_prompt = "You are a helpful assistant. Answer format: {\"answer\": <number>}."
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": question}
@@ -25,7 +25,7 @@ def cot_answer(client: OpenAI | AzureOpenAI, question: str, model_name: str) -> 
     """
     Generates a chain-of-thought answer using the provided client.
     """
-    system_prompt = "Solve the following problem. Think step-by-step."
+    system_prompt = "You are a helpful assistant. Think step-by-step. Final answer format: {\"answer\": <number>}."
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": question}
