@@ -1,18 +1,13 @@
 """RL fine-tuning (RLVR) of the debate LoRA model with GRPO
 ----------------------------------------------------------------
 The script assumes that you have already run `0_train_debate_lora.py` and
-have a checkpoint directory under `lora_debate_ckpts/` (the default path
-laid out in the supervised-fine-tuning script).  We now run a second stage
-of training that optimises the model with the custom *debate* reward
-function using Hugging Face TRL's `GRPOTrainer`.
+have a checkpoint directory under `lora_debate_ckpts/`.  We now run a
+second stage of training that optimises the model with the custom *debate*
+reward function using Hugging Face TRL's `GRPOTrainer`.
 
 Usage (single-GPU example):
     $ accelerate launch train/rl.py
-
-Feel free to tweak the GRPOConfig hyper-parameters at the bottom.
 """
-from __future__ import annotations
-
 from pathlib import Path
 import re
 from typing import List
@@ -29,69 +24,70 @@ from trl import GRPOConfig, GRPOTrainer
 
 ADAPTER_DIR = Path("lora_debate_ckpts") / "checkpoint-600"  # last SFT ckpt
 BASE_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
-
+tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR)
 
 def load_finetuned_model():
-    """Load base model + LoRA adapters exactly as they were during evaluation."""
-    tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR)
+    """Load base model + LoRA adapters"""
     model = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL, torch_dtype=torch.bfloat16, device_map="auto"
     )
     model.resize_token_embeddings(len(tokenizer))
     model = PeftModel.from_pretrained(model, ADAPTER_DIR)
-    # From this point `model` already contains the LoRA weights.
-    return model, tokenizer
+    return model
 
 
 ###############################################################################
 # Reward function
 ###############################################################################
 
-answer_regex = re.compile(r"\"answer\"\s*:\s*(-?\d+)")
-
-
-def _extract_first_answer(segment: str) -> int | None:
+def _extract_answer(segment: str) -> int | None:
     """Return the *first* integer answer inside a dialogue segment, else None."""
-    m = answer_regex.search(segment)
+    answer_regex = re.compile(r'\{"answer":\s*([0-9]+(?:\.[0-9]+)?)\}')
+    m = answer_regex.findall(segment)
     if m:
-        return int(m.group(1))
+        return int(m[-1])
     return None
 
-
 def _compute_reward_single(trace: str, gold: int) -> float:
-    """Implements the reward specification from the user prompt (vector-free)."""
-    # Split on every solver turn (we skip the initial <|question|> block)
-    segs = trace.split("<|solver|>")[1:]
+    """
+    +1.0  if solver is correct on first try (no critic needed)
+    +0.8  if first solver answer is wrong BUT
+           (a)  a critic turn appears before the fix AND
+           (b)  the next solver answer is correct
+    -0.2  otherwise (still wrong at end)
+    -0.002 * extra_tokens_after_fix   # length penalty
+    """
+    # Create a list of segments between solver and critic (just string manipulation)
+    # each segment is of the form "<|role|> …"
+    s = trace
+    segs = s[s.find('<|solver|>', s.find('<|solver|>') + 1):].split('<|endofturn|>')[:-1]
 
-    earliest: int | None = None
-    critic_before_fix = False
-    tokens_after_fix = 0
-
-    for seg in segs:
-        # Each `seg` is like "<|role|> … <|endofturn|> …"
-        # Identify role from the prefix, strip it for body parsing.
-        role = "solver" if seg.startswith("<|solver|>") else (
-            "critic" if seg.startswith("<|critic|>") else "unknown"
-        )
-        body = seg.split("<|endofturn|>", 1)[-1]
-
-        if earliest is None:
-            found = _extract_first_answer(body)
-            if found is not None:
-                earliest = found
-        if role == "critic" and earliest is None:
-            critic_before_fix = True
-        if earliest is not None:
-            tokens_after_fix += len(body.split())
-
-    correct_now = earliest is not None and int(earliest) == gold
-
-    if correct_now and not critic_before_fix:
+    correct_answer_index = None
+    for i, seg in enumerate(segs):
+        answer = _extract_answer(seg)
+        if answer == str(gold):
+            correct_answer_index = i
+            break
+    correct_answer_found = correct_answer_index is not None
+    
+    if correct_answer_index == 0 and len(segs) == 1:
         return 1.0
-    if correct_now and critic_before_fix:
-        return 0.8 - 0.002 * tokens_after_fix
-    return -0.2
-
+    
+    if not correct_answer_found:
+        return -0.2
+    
+    # answer was found but not on first try
+    if correct_answer_found:
+        # need to make sure that there were alternating turns between solver and critic before the answer was found
+        # if there were, give high reward but penalize for number of turns
+        # if there were not, give zero reward (to avoid reward hacking by not calling the critic at all)
+        roles = ['solver' if seg.startswith('<|solver|>') else 'critic' for seg in segs[:correct_answer_index]]
+        if len(roles) % 2 == 0:
+            if roles[::2] == ['solver'] * (len(roles) // 2) and roles[1::2] == ['critic'] * (len(roles) // 2):
+                tokens_after_fix = sum(len(tokenizer.encode(seg)) for seg in segs[correct_answer_index:])
+                return 0.8 - 0.002 * (len(roles) // 2) - 0.002 * tokens_after_fix
+        else:
+            return 0.0
 
 def debate_reward(
     *,
@@ -145,7 +141,7 @@ rl_dataset = gsm8k.map(
 # Build trainer and run
 ###############################################################################
 
-policy, tokenizer = load_finetuned_model()
+policy = load_finetuned_model()
 
 # Important for autoregressive tasks: left-padding
 tokenizer.padding_side = "left"

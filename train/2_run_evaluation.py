@@ -1,13 +1,11 @@
 import json
 from pathlib import Path
 import sys
-import pandas as pd
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 import torch
 import re
-import os
 
 # Add project root to path
 sys.path.append(str(Path.cwd().parent))
@@ -116,23 +114,6 @@ def main():
         with open(output_file, "w") as f:
             json.dump(result, f, indent=2)
 
-    # Aggregate results
-    results = []
-    for f in os.listdir(RESULTS_DIR):
-        with open(RESULTS_DIR / f, "r") as f:
-            results.append(json.load(f))
-            
-    # Save and print results
-    results_df = pd.DataFrame(results)
-
-    return results_df
-
 if __name__ == "__main__":
-    results_df = main()
-    results_df['cot_correct'] = results_df['cot_answer'] == results_df['gold_answer']
-    results_df['finetuned_correct'] = results_df['finetuned_answer'] == results_df['gold_answer']
-    cot_accuracy = results_df['cot_correct'].mean()
-    finetuned_accuracy = results_df['finetuned_correct'].mean()
-    print(f"CoT accuracy: {cot_accuracy}")
-    print(f"Finetuned accuracy: {finetuned_accuracy}")
+    main()
     
