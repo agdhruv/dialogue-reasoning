@@ -1,13 +1,16 @@
+from dotenv import load_dotenv
+load_dotenv()
 import json
 from pathlib import Path
+import os
 import sys
 sys.path.append(str(Path.cwd().parent))
 import pandas as pd
 from tqdm import tqdm
 from openai import AzureOpenAI, OpenAI
-from methods.baselines import zero_shot_answer, cot_answer
+from methods.baselines import cot_answer
 from methods.debate import debate
-from src.clients import get_azure_openai_client, get_ollama_client
+from src.clients import get_ollama_client, get_openai_client
 from src.utils import load_gsm8k_dataset
 import multiprocessing as mp
 
@@ -18,10 +21,6 @@ def process_question(index: int, row: pd.Series, results_dir: Path, solver_clien
     question = row["question"]
 
     methods = {
-        # "zero_shot": {
-        #     "runner": lambda: zero_shot_answer(solver_client, question, solver_model),
-        #     "serializer": lambda response: response.model_dump()
-        # },
         "cot": {
             "runner": lambda: cot_answer(solver_client, question, solver_model),
             "serializer": lambda response: response.model_dump()
@@ -53,58 +52,48 @@ def process_chunk(chunk_data):
     if solver_client_type == 'ollama':
         solver_client = get_ollama_client()
     else:  # azure
-        solver_client = get_azure_openai_client()
+        solver_client = get_openai_client()
     
-    critic_client = get_azure_openai_client()
+    critic_client = get_openai_client()
     
     for index, row in tqdm(chunk_df.iterrows(), total=len(chunk_df), desc=f"Processing GSM8K ({solver_model})"):
         process_question(index, row, results_dir, solver_client, solver_model, critic_client, critic_model)
 
 def test_function(idx: int, gsm_df: pd.DataFrame, solver_model: str, solver_client: OpenAI | AzureOpenAI, critic_model: str, critic_client: AzureOpenAI):
-    # response = zero_shot_answer(solver_client, gsm_df.loc[idx]['question'], solver_model)
     conversation = debate(gsm_df.loc[idx]['question'], solver_client=solver_client, solver_model=solver_model, critic_client=critic_client, critic_model=critic_model)
     print(f"Question {idx}: {gsm_df.loc[idx]['question']}")
     print(f"Gold answer: {gsm_df.loc[idx]['gold_answer']}")
-    # print(response)
     conversation.print()
 
 if __name__ == "__main__":
     experiments = [
         {
             "solver_client_type": "ollama",
-            "solver_model": "llama3.1:8b",
+            "solver_model": "qwen2.5:1.5b",
         }
     ]
-
-    critic_client = get_azure_openai_client()
-    critic_model = "gpt-4o_2024-11-20"
+    critic_model = "gpt-4o"
     
     print("Loading GSM8K dataset...")
     dataset_split = "train"
     top_k = None
     gsm_df = load_gsm8k_dataset(dataset_split, top_k)
     
-    # test_function(23, gsm_df, "llama3.1:8b", get_ollama_client(), "gpt-4o_2024-11-20", get_azure_openai_client())
+    # test_function(23, gsm_df, "qwen2.5:1.5b", get_ollama_client(), "gpt-4o", get_openai_client())
 
     for exp in experiments:
         experiment_id = f"{dataset_split}_{exp['solver_client_type']}_{exp['solver_model']}"
         print(f"--- Running Experiment: {experiment_id} ---")
-        
-        # Set up client for the current experiment
-        if exp['solver_client_type'] == 'ollama':
-            solver_client = get_ollama_client()
-        else: # azure
-            solver_client = get_azure_openai_client()
 
-        # 2. Set up results directory
+        # Set up results directory
         results_dir = Path(f"results/gsm8k/{experiment_id}")
         results_dir.mkdir(parents=True, exist_ok=True)
         
-        # 3. Process questions
+        # Process questions
         print(f"Processing {len(gsm_df)} questions...")
         
         # Split dataframe into chunks for parallel processing
-        num_workers = 4
+        num_workers = os.cpu_count() // 2
         chunk_size = len(gsm_df) // num_workers
         chunks = []
         

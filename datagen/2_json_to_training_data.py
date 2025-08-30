@@ -71,7 +71,7 @@ def main() -> None:
     out_dir = Path("generated_data/") # Output directory
     val_ratio = 0.05 # Fraction for validation split
     seed = 42 # RNG seed
-    BASE_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+    BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
     
     # 1. Load jsonl as HF dataset
     print(f"► Loading dataset from {input_jsonl}...")
