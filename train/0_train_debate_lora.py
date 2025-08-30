@@ -18,7 +18,7 @@ from datetime import datetime
 # Data and model paths
 DATA_DIR = Path("../datagen/generated_data")
 OUTDIR = Path("lora_debate_ckpts")
-BASE_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 
 # Tokens added in the training data
 NEW_TOKENS = ["<|question|>", "<|solver|>", "<|critic|>", "<|endofturn|>", "<|endofdialogue|>"]
@@ -36,7 +36,7 @@ if added != len(NEW_TOKENS):
 tokenizer.pad_token = tokenizer.eos_token # We need a pad token
 
 # Dataset
-raw = load_dataset("json", data_files={
+raw = load_dataset("text", data_files={
     "train": str(DATA_DIR / "train.txt"),
     "val": str(DATA_DIR / "val.txt")
 })
@@ -93,25 +93,33 @@ lora_cfg = LoraConfig(
 model = get_peft_model(model, lora_cfg)
 model.print_trainable_parameters()
 
+# Training parameters
+batch_size = 8
+accumulation_steps = 4
+effective_batch_size = batch_size * accumulation_steps
+steps_per_epoch = len(tokenized["train"]) // effective_batch_size
+num_evals_per_epoch = 8
+eval_steps = steps_per_epoch // num_evals_per_epoch # evaluate 8 times every epoch
+save_steps = eval_steps * (num_evals_per_epoch // 2) # save twice every epoch
 
 # Training arguments
 args = TrainingArguments(
     output_dir=str(OUTDIR),
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=8,
-    gradient_accumulation_steps=4,        # effective batch 32
+    per_device_train_batch_size=batch_size,
+    per_device_eval_batch_size=batch_size,
+    gradient_accumulation_steps=accumulation_steps,        # effective batch 32
     learning_rate=2e-4,
     num_train_epochs=3,
     lr_scheduler_type="cosine",
     warmup_steps=50,
     eval_strategy="steps",
-    eval_steps=100,
+    eval_steps=eval_steps,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
     greater_is_better=False,
     save_strategy="steps",
     logging_steps=1,
-    save_steps=100,
+    save_steps=save_steps,
     save_total_limit=2,
     bf16=True,
     tf32=True,
