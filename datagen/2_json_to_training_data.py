@@ -42,7 +42,7 @@ def serialize_dialogue(example: dict, tokenizer: AutoTokenizer) -> dict:
     Return the serialized text or None if the trace is incorrect.
     """
     messages = [
-        {'role': 'system', 'content': f'You are a debate assistant. Respond with alternating segments that start with <|solver|> or <|critic|> and finish each turn with <|endofturn|>. Use no other tags.'},
+        {'role': 'system', 'content': f'You are a helpful assistant. Final answer format: {{"answer": <number>}}.'},
         {'role': 'user', 'content': f'{SPECIAL_TOKENS["question"]} {example["question"].strip()}'},
     ]
     assistant_response = ''
