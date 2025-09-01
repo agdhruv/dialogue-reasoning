@@ -14,8 +14,8 @@ SPECIAL_TOKENS = {
 }
 
 MODEL_DIR = Path("lora_debate_ckpts")
-ADAPTER_DIR = MODEL_DIR / "checkpoint-600"
-BASE_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+ADAPTER_DIR = MODEL_DIR / "checkpoint-357"
+BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 
 # Load tokenizer from the adapter directory
 tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR)
@@ -39,7 +39,7 @@ model.eval()
 print("--- Testing on a simple example ---")
 question = "Jackson is clearing out his email inbox after noticing he has a whole lot of emails that he no longer needs and can delete. While he is cleaning his inbox, though, he keeps getting more emails. While he deletes 50 emails he gets another 15 sent to him. While he deletes 20 more he receives 5 more emails. After he is done deleting all his old emails he has just the new emails left, including 10 more that were sent to him. How many emails are there in Jackson's inbox now?"
 messages = [
-    {'role': 'system', 'content': f'You are a debate assistant. Respond with alternating segments that start with {SPECIAL_TOKENS["solver"]} or {SPECIAL_TOKENS["critic"]} and finish each turn with {SPECIAL_TOKENS["eot"]}. Use no other tags.'},
+    {'role': 'system', 'content': 'You are a helpful assistant. Final answer format: {"answer": <number>}.'},
     {'role': 'user', 'content': f'{SPECIAL_TOKENS["question"]} {question}'}
 ]
 prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
